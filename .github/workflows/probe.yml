@@ -1,0 +1,68 @@
+name: CI probe
+
+on:
+  push:
+    branches: ["ci-probe"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: probe-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build (diagnostics)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Build with full log
+        shell: bash
+        run: |
+          set -o pipefail
+          ./gradlew :app:assembleDebug --no-daemon --stacktrace > build.log 2>&1
+          echo "exit=$?"
+          tail -40 build.log
+
+      - name: Post diagnostics
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          GH_SHA: ${{ github.sha }}
+        run: |
+          python3 - <<'PYEOF'
+          import json, os, re, urllib.request
+
+          raw = open("build.log", errors="replace").read() if os.path.exists("build.log") else "no build.log"
+          lines = raw.splitlines()
+
+          keep = []
+          for i, line in enumerate(lines):
+              if re.search(r"(^e: |^w: file|error:|^FAILED|What went wrong|Caused by:|Execution failed|> Task .*FAILED|Unresolved reference|Type mismatch|None of the following|Cannot access|is not a function|AAPT|resource.*not found|Android resource linking)", line):
+                  keep.append(f"{i}: {line}")
+          filtered = "\n".join(keep)[-50000:] or "(no error-pattern lines found)"
+          tail = "\n".join(lines[-8000:])
+
+          def post(body, label):
+              req = urllib.request.Request(
+                  f"https://api.github.com/repos/{os.environ['GH_REPO']}/commits/{os.environ['GH_SHA']}/comments",
+                  data=json.dumps({"body": f"### {label}\n```\n{body}\n```"}).encode(),
+                  headers={"Authorization": "Bearer " + os.environ["GH_TOKEN"],
+                           "Accept": "application/vnd.github+json",
+                           "Content-Type": "application/json"})
+              urllib.request.urlopen(req)
+
+          post(filtered, "Build errors (filtered)")
+          post(tail, "Build log tail")
+          print("posted")
+          PYEOF
