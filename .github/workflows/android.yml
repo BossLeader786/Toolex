@@ -37,8 +37,54 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v6
 
+      # Bytecode/target-safety net: `javac` rejects Java-8-style references to
+      # Android APIs introduced after minSdk 24 (Kotlin 2.x no longer errors on
+      # those), so a release build catches accidental new-API usage.
+      - name: Verify release bytecode (no APIs above minSdk)
+        run: ./gradlew :app:assembleRelease --stacktrace --no-daemon
+
       - name: Run JVM unit tests
-        run: ./gradlew :app:testDebugUnitTest --stacktrace --no-daemon
+        shell: bash
+        run: |
+          set -o pipefail
+          ./gradlew :app:testDebugUnitTest --stacktrace --no-daemon 2>&1 | tee gradle.log | tail -n 60
+
+      # The Actions log download endpoint is not reachable from every network,
+      # so mirror the diagnostics into a commit comment (readable via the API).
+      - name: Post failure details to the commit
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          GH_SHA: ${{ github.sha }}
+        run: |
+          python3 - <<'PYEOF'
+          import json, os, re, urllib.request
+
+          try:
+              raw = open("gradle.log", errors="replace").read()
+          except FileNotFoundError:
+              raw = "gradle.log not produced (failure happened before Gradle ran)"
+
+          pattern = re.compile(
+              r"(^e: |error:|^FAILED|What went wrong|Caused by|Execution failed|> Task .*FAILED|"
+              r"Unresolved reference|Type mismatch|Only safe \(|Cannot access)"
+          )
+          lines = [l for l in raw.splitlines() if pattern.search(l)]
+          body = "\n".join(lines)[-55000:] or raw[-55000:]
+          payload = {"body": "### CI diagnostics\n```\n" + body + "\n```"}
+          req = urllib.request.Request(
+              f"https://api.github.com/repos/{os.environ['GH_REPO']}/commits/{os.environ['GH_SHA']}/comments",
+              data=json.dumps(payload).encode(),
+              headers={
+                  "Authorization": "Bearer " + os.environ["GH_TOKEN"],
+                  "Accept": "application/vnd.github+json",
+                  "Content-Type": "application/json",
+              },
+          )
+          urllib.request.urlopen(req)
+          print("diagnostics posted")
+          PYEOF
 
       - name: Publish test report
         if: always()
