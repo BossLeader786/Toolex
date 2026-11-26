@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Toolex — install</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body {
+      margin: 0; min-height: 100vh; display: grid; place-items: center;
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      background: linear-gradient(160deg, #2F6FED, #6C3BF4); color: #fff;
+    }
+    .card {
+      background: rgba(255, 255, 255, .96); color: #11151C; border-radius: 24px;
+      padding: 32px 28px; max-width: 420px; width: calc(100% - 32px);
+      text-align: center; box-shadow: 0 24px 60px rgba(0, 0, 0, .28);
+    }
+    h1 { margin: 0 0 4px; font-size: 26px; letter-spacing: -.3px; }
+    p { margin: 6px 0; color: #4A5468; font-size: 14px; line-height: 1.5; }
+    .qr { margin: 18px auto 10px; width: 200px; height: 200px; }
+    a.btn {
+      display: block; margin-top: 16px; padding: 15px 20px; border-radius: 14px;
+      background: linear-gradient(90deg, #2F6FED, #6C3BF4); color: #fff;
+      text-decoration: none; font-weight: 600;
+    }
+    code { background: #EDF0F7; border-radius: 6px; padding: 2px 6px; font-size: 12px; }
+    ul { text-align: left; font-size: 13px; color: #4A5468; padding-left: 20px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Toolex</h1>
+    <p>Images → PDF, offline · <b>16.7 MB</b> · build 22 · <code>82be6b1</code></p>
+    <img class="qr" src="qr.png" alt="QR code">
+    <p>Phone se QR scan karo, ya button dabao</p>
+    <a class="btn" href="toolex-dev.apk">Download APK</a>
+    <p style="margin-top:14px">Install karte waqt &quot;unknown sources&quot; allow karna hoga.</p>
+    <ul>
+      <li>Android 7.0 (API 24) ya usse naya</li>
+      <li>Koi internet permission nahi — sab phone par</li>
+      <li>Debug build: test ke liye</li>
+    </ul>
+  </div>
+</body>
+</html>
