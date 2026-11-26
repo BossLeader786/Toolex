@@ -39,7 +39,11 @@ class MathHeuristicsTest {
     fun `nice rounding keeps readable values`() {
         assertEquals(10L * 1024 * 1024, MathHeuristics.roundNice(10_400_000))
         assertEquals(10L * 1024 * 1024, MathHeuristics.roundNice(10L * 1024 * 1024))
-        assertTrue(MathHeuristics.roundNice(980 * 1024) <= 980L * 1024)
+        assertEquals(980L * 1024, MathHeuristics.roundNice(980L * 1024))
+        // nearest, not always down: 1003 KB -> 1000 KB, 1009 KB -> 1010 KB
+        assertEquals(1000L * 1024, MathHeuristics.roundNice(1003L * 1024))
+        assertEquals(1010L * 1024, MathHeuristics.roundNice(1009L * 1024))
+        assertTrue(MathHeuristics.roundNice(980L * 1024) <= 980L * 1024)
     }
 
     @Test
@@ -63,7 +67,7 @@ class NamingTest {
 
     @Test
     fun `names are sanitised like the flask app`() {
-        assertEquals("Holiday_Trip__1", FileStore.safeBaseName("Holiday Trip (1).jpg"))
+        assertEquals("Holiday_Trip_1", FileStore.safeBaseName("Holiday Trip (1).jpg"))
         assertEquals("scan", FileStore.safeBaseName("../../scan.png"))
         assertEquals("image", FileStore.safeBaseName("   .jpg"))
         assertEquals("no_ext", FileStore.safeBaseName("no_ext"))

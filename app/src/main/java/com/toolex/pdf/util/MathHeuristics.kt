@@ -29,16 +29,20 @@ object MathHeuristics {
         return bytes.toLong().coerceAtLeast(1)
     }
 
-    /** Nicely rounded ceilings: 10.4 MB -> 10 MB, 980 KB -> 1 MB. */
+    /**
+     * Nicely rounded ceilings, to the *nearest* step:
+     * 10.4 MB -> 10 MB, 980 KB -> 980 KB, 1003 KB -> 1000 KB.
+     */
     fun roundNice(bytes: Long): Long {
         val mb = 1024L * 1024L
         val kb = 1024L
-        return when {
-            bytes >= mb -> (bytes / mb) * mb
-            bytes >= 100 * kb -> (bytes / (10 * kb)) * 10 * kb
-            bytes >= 10 * kb -> (bytes / kb) * kb
-            else -> bytes
+        val step = when {
+            bytes >= mb -> mb
+            bytes >= 100 * kb -> 10 * kb
+            bytes >= 10 * kb -> kb
+            else -> 1L
         }
+        return ((bytes + step / 2) / step) * step
     }
 
     /**
