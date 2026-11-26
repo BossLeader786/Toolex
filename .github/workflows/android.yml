@@ -161,7 +161,9 @@ jobs:
       - name: Collect APK
         run: |
           mkdir -p artifacts
-          cp app/build/outputs/apk/debug/*.apk "artifacts/Toolex-${GITHUB_REF_NAME}-debug.apk"
+          # PR refs are like "1/merge" -> slashes would break the file name.
+          SAFE_REF="$(printf '%s' "${GITHUB_REF_NAME}" | tr '/ ' '--')"
+          cp app/build/outputs/apk/debug/*.apk "artifacts/Toolex-${SAFE_REF}-debug.apk"
           ls -lh artifacts
 
       - uses: actions/upload-artifact@v4
