@@ -90,8 +90,45 @@ class PageGeometryTest {
         val opts = options(size = PageSize.ORIGINAL)
         val layout = PageGeometry.layout(opts, 400, 300)
         val place = PageGeometry.placement(opts, layout, 400, 300, 200)
-        assertEquals(400.0, place.drawWidthPt, 0.01)
-        assertEquals(300.0, place.drawHeightPt, 0.01)
+        // 400 px at 96 dpi = 300 pt, and the raster never exceeds the source.
+        assertEquals(300.0, place.drawWidthPt, 0.01)
+        assertEquals(225.0, place.drawHeightPt, 0.01)
+        assertTrue(place.rasterWidth <= 400)
+        assertTrue(place.rasterHeight <= 300)
+    }
+
+    @Test
+    fun `picture always respects the margin box`() {
+        for (size in PageSize.entries) {
+            for (orientation in Orientation.entries) {
+                for (fit in FitMode.entries) {
+                    for (iv in listOf(2000 to 1000, 1200 to 1600, 300 to 900)) {
+                        val opts = options(
+                            size = size,
+                            orientation = orientation,
+                            fit = fit,
+                            margins = MarginSize.MEDIUM,
+                        )
+                        val layout = PageGeometry.layout(opts, iv.first, iv.second)
+                        val place = PageGeometry.placement(opts, layout, iv.first, iv.second, 200)
+                        val m = opts.margins.points
+                        assertTrue(
+                            "left margin $size/$orientation/$fit",
+                            place.offsetXpt >= m - 0.01,
+                        )
+                        assertTrue("top margin", place.offsetYpt >= m - 0.01)
+                        assertTrue(
+                            "right margin",
+                            place.offsetXpt + place.drawWidthPt <= layout.pageWidth - m + 0.01,
+                        )
+                        assertTrue(
+                            "bottom margin",
+                            place.offsetYpt + place.drawHeightPt <= layout.pageHeight - m + 0.01,
+                        )
+                    }
+                }
+            }
+        }
     }
 
     @Test

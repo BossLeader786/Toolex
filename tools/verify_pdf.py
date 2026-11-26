@@ -84,7 +84,8 @@ def kotlin_placement(page_size, orientation, margins, fit, image_w, image_h, dpi
         scale = min(aw / sw, ah / sh)
     draw_w = float(max(1, round(sw * scale)))
     draw_h = float(max(1, round(sh * scale)))
-    clamp = min(1.0, min(pw / draw_w, ph / draw_h))
+    _, _, _, area_w, area_h = kotlin_layout(page_size, orientation, margins, image_w, image_h)
+    clamp = min(1.0, min(area_w / draw_w, area_h / draw_h))
     if clamp < 1.0:
         draw_w *= clamp
         draw_h *= clamp
@@ -254,7 +255,11 @@ def check_geometry(images):
                         assert got["off_y"] + got["draw_h"] <= got["page_h"] + 0.01
                         if margins != "None":
                             m = MARGINS[margins]
-                            assert got["off_x"] >= m - 0.01 or got["draw_w"] >= got["page_w"] - 2 * m
+                            # the picture must respect the margin box on all sides
+                            assert got["off_x"] >= m - 0.01, (ps, orient, fit, margins, got["off_x"], m)
+                            assert got["off_y"] >= m - 0.01, (ps, orient, fit, margins, got["off_y"], m)
+                            assert got["off_x"] + got["draw_w"] <= got["page_w"] - m + 0.01
+                            assert got["off_y"] + got["draw_h"] <= got["page_h"] - m + 0.01
                         cases += 1
     print(f"  OK {cases} layout cases match the Flask app")
 

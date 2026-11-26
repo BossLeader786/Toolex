@@ -99,12 +99,14 @@ object PageGeometry {
         var drawWidthPt = max(1, (srcWidth * scale).roundToInt()).toDouble()
         var drawHeightPt = max(1, (srcHeight * scale).roundToInt()).toDouble()
 
-        // Pillow's `im.thumbnail(canvas.size)` safety net: the picture can never
-        // be larger than the page itself (matters for Original size + margins).
-        val pageClamp = min(1.0, min(pw / drawWidthPt, ph / drawHeightPt))
-        if (pageClamp < 1.0) {
-            drawWidthPt *= pageClamp
-            drawHeightPt *= pageClamp
+        // Safety net (Pillow's `im.thumbnail(canvas.size)` equivalent): round()
+        // can push the box a fraction of a point past its limit, so clamp it to
+        // the printable area — never the page — to keep margins exact and the
+        // picture fully inside the paper, even on Original size.
+        val areaClamp = min(1.0, min(aw / drawWidthPt, ah / drawHeightPt))
+        if (areaClamp < 1.0) {
+            drawWidthPt *= areaClamp
+            drawHeightPt *= areaClamp
         }
 
         val offsetXpt = max(0.0, (pw - drawWidthPt) / 2)
