@@ -18,3 +18,4 @@ artifacts/
 gradle.log
 probe.log
 build.log
+**/build/

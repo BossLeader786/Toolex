@@ -1,186 +1,45 @@
-name: Toolex build
-
-# Everything happens on GitHub:
-#   push / PR  -> tests, engine verification, APK, and a public install page
-#   v* tag     -> the same APK as a GitHub Release
-#   Actions tab -> "Run workflow" (manual builds)
-
-on:
-  push:
-    branches: ["**"]
-    tags: ["v*"]
-  pull_request:
-  workflow_dispatch:
-
+name: Android
+on: [push, pull_request, workflow_dispatch]
 permissions:
-  contents: write        # commit comments (diagnostics) + Releases + Pages branch
-
-concurrency:
-  group: build-${{ github.ref }}
-  cancel-in-progress: true
-
-env:
-  # GitHub-hosted runners already ship an Android SDK; reuse it.
-  ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
-  ANDROID_HOME: /usr/local/lib/android/sdk
-
+  contents: read
 jobs:
-  # ---------------------------------------------------------------------------
-  # 1. Compile, unit tests and the installable APK.
-  #    `assembleRelease` doubles as a bytecode check: it fails if any code uses
-  #    Android APIs newer than minSdk 24.
-  # ---------------------------------------------------------------------------
   build:
-    name: Build + tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-
-      - name: Set up JDK 21
-        uses: actions/setup-java@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: "21"
-
-      - uses: gradle/actions/setup-gradle@v6
-
-      - name: Compile, unit tests, APK
-        shell: bash
-        run: |
-          set -o pipefail
-          {
-            echo "=== assembleRelease (minSdk bytecode check) ==="
-            ./gradlew :app:assembleRelease --stacktrace --no-daemon 2>&1 | tee -a gradle.log | tail -n 60
-            echo "=== testDebugUnitTest ==="
-            ./gradlew :app:testDebugUnitTest --stacktrace --no-daemon 2>&1 | tee -a gradle.log | tail -n 60
-            echo "=== assembleDebug (the APK we ship) ==="
-            ./gradlew :app:assembleDebug --stacktrace --no-daemon 2>&1 | tee -a gradle.log | tail -n 60
-          }
-
-      - name: Collect APK
-        run: |
-          mkdir -p artifacts
-          # PR refs look like "12/merge" -> slashes would break the file name.
-          SAFE_REF="$(printf '%s' "${GITHUB_REF_NAME}" | tr '/ ' '--')"
-          cp app/build/outputs/apk/debug/*.apk "artifacts/Toolex-${SAFE_REF}-debug.apk"
-          ls -lh artifacts
-
-      - name: Post diagnostics to the commit
-        if: failure()
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
-          GITHUB_SHA: ${{ github.sha }}
-        run: python3 tools/ci_report.py --log gradle.log --title "Build log (filtered)"
-
-      - name: Upload APK
-        if: success()
-        uses: actions/upload-artifact@v4
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+      - run: ./gradlew testDebugUnitTest assembleDebug assembleDebugAndroidTest --stacktrace
+      - uses: actions/upload-artifact@v4
         with:
-          name: toolex-debug-apk
-          path: artifacts/*.apk
-          retention-days: 90
-
-      - name: Upload test report
+          name: Toolex-debug
+          path: app/build/outputs/apk/debug/*.apk
+      - uses: actions/upload-artifact@v4
         if: always()
-        uses: actions/upload-artifact@v4
         with:
-          name: unit-test-report
-          path: app/build/reports/tests/testDebugUnitTest
-          if-no-files-found: ignore
-
-  # ---------------------------------------------------------------------------
-  # 2. Engine verification: a 1:1 Python port is compared with the original
-  #    Flask maths (288 layout cases) and real PDFs are read back with pypdf.
-  # ---------------------------------------------------------------------------
-  verify-engine:
-    name: Verify PDF engine
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - run: pip install pypdf Pillow
-
-      - name: Geometry + PDF structure checks
-        run: python3 tools/verify_pdf.py
-
-  # ---------------------------------------------------------------------------
-  # 3. Public install page on GitHub Pages (QR + APK), so a phone can install
-  #    the latest successful build with one tap — even though the repo is
-  #    private. Rebuilt only from the default branch + tags.
-  # ---------------------------------------------------------------------------
-  pages:
-    name: Publish install page
-    needs: build
-    if: >-
-      github.event_name != 'pull_request' &&
-      (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-
-      - uses: actions/download-artifact@v4
-        with:
-          name: toolex-debug-apk
-          path: artifacts
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: Enable GitHub Pages (needs a one-time admin token)
-        continue-on-error: true
-        env:
-          PAGES_TOKEN: ${{ secrets.PAGES_TOKEN }}
-        run: |
-          if [ -n "$PAGES_TOKEN" ]; then
-            curl -sS -X POST \
-              -H "Authorization: Bearer $PAGES_TOKEN" \
-              -H "Accept: application/vnd.github+json" \
-              -d '{"build_type":"legacy","source":{"branch":"gh-pages","path":"/"}}' \
-              "https://api.github.com/repos/${GITHUB_REPOSITORY}/pages" || true
-          else
-            echo "PAGES_TOKEN secret not set; enable Pages manually (see docs/GITHUB_SETUP.md)"
-          fi
-
-      - name: Build site
-        run: |
-          pip install --quiet "qrcode[pil]"
-          APK="$(ls artifacts/*.apk | head -1)"
-          python3 tools/make_install_page.py "$APK" site
-
-      - name: Deploy to GitHub Pages
-        uses: peaceiris/actions-gh-pages@v4
-        with:
-          github_token: ${{ github.token }}
-          publish_dir: ./site
-          publish_branch: gh-pages
-
-  # ---------------------------------------------------------------------------
-  # 4. v* tag -> GitHub Release with the APK attached.
-  # ---------------------------------------------------------------------------
-  release:
-    name: Publish GitHub Release
-    if: startsWith(github.ref, 'refs/tags/v')
+          name: unit-test-results
+          path: app/build/test-results/testDebugUnitTest/
+  device:
     needs: build
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        api: [29, 36]
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
         with:
-          name: toolex-debug-apk
-          path: artifacts
-
-      - name: Create release with APK
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh release create "${GITHUB_REF_NAME}" \
-            artifacts/*.apk \
-            --repo "${GITHUB_REPOSITORY}" \
-            --title "Toolex ${GITHUB_REF_NAME}" \
-            --notes "Images → PDF, offline. Install the APK below (allow \"install from unknown sources\" once)." \
-            --latest
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+      - run: sudo chmod 666 /dev/kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ matrix.api }}
+          arch: x86_64
+          target: google_apis
+          script: ./gradlew connectedDebugAndroidTest

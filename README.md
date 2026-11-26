@@ -1,148 +1,29 @@
-# Toolex — Images → PDF (Android, Kotlin)
+# Toolex
 
-<p align="left">
-  <a href="https://github.com/BossLeader786/Toolex/actions/workflows/android.yml"><img alt="Build" src="https://github.com/BossLeader786/Toolex/actions/workflows/android.yml/badge.svg"></a>
-  <a href="https://github.com/BossLeader786/Toolex/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/BossLeader786/Toolex"></a>
-  <img alt="minSdk" src="https://img.shields.io/badge/Android-7.0%2B-3ddc84">
-</p>
+An offline Android photo editor and image-to-PDF converter for Android 7–16 (API 24–36). Built with Kotlin, Jetpack Compose and Android graphics APIs.
 
-**📲 Phone par install karo:** [**latest APK download**](https://github.com/BossLeader786/Toolex/releases/latest) — ya ye QR scan karo:
+## Build and install
 
-<img src="docs/download_qr.png" width="180" alt="Download QR">
+Open the repository in Android Studio Meerkat Feature Drop or newer. Install Android SDK Platform 36 and Build Tools 35.0.0. Select JDK 17 for Gradle. Sync, select the app configuration and run on a device. From a terminal:
 
-Native Android port of the **PaperLite** Flask/Pillow tool you shared. Same logic, same
-options, same honest "target size is a maximum, not a promise" behaviour — but it runs
-**fully offline on the phone**, with no server, no upload and no paid API.
-
-<p align="center">
-  <i>Kotlin · Jetpack Compose · Material 3 · zero third-party PDF/image libraries</i>
-</p>
-
----
-
-## What it does
-
-| Feature | Detail |
-|---|---|
-| Merge images into one PDF | Multiple JPG/PNG/WEBP → one multi-page PDF |
-| Separate PDFs | One PDF per image, delivered together in a ZIP |
-| Reorder before export | Arrows on each thumbnail (page order = strip order) |
-| Page sizes | A4, A5, Letter, Original |
-| Orientation | Auto (follows the photo), Portrait, Landscape |
-| Placement | **Fit** (whole photo, white bars) or **Fill** (cover page, edges cropped) |
-| Margins | None, Small (6.3 mm), Medium (12.7 mm), Large (19 mm) |
-| Normal quality | 200 DPI / JPEG 88 — the everyday balance |
-| Custom max size | KB/MB ceiling with a DPI+quality ladder that keeps the **highest quality that fits** |
-| Size transparency | Source bytes **and** estimated PDF bytes shown separately, plus real output size after export |
-| Result actions | Open · Share · Save to Downloads |
-| Limits | 100 images per job, 200 MB total, 10 KB min target |
-
-Everything happens in the app's private storage; nothing is uploaded. The app has **no
-INTERNET permission on purpose**.
-
-## Install (GitHub se, laptop ki zarurat nahi)
-
-1. Phone me link kholo: **https://github.com/BossLeader786/Toolex/releases/latest**
-2. `Toolex-*-debug.apk` download karo
-3. Install karte waqt "unknown sources / Install anyway" allow karo
-4. App kholo → images chuno → **PDF banao**
-
-Har naya version `v*` tag par banti hai; har push par bhi APK Actions me
-(`Actions → Toolex build → Artifacts`) mil jata hai.
-
-## Build & run
-
-Requirements: Android Studio (Ladybug+) or a local JDK 17 + Android SDK 34.
-
-```bash
-./gradlew :app:assembleDebug          # APK -> app/build/outputs/apk/debug/
-./gradlew :app:testDebugUnitTest      # JVM unit tests (page math, parsing, naming)
-./gradlew installDebug                # install on a connected device/emulator
+```sh
+./gradlew testDebugUnitTest assembleDebug
+adb install -r app/build/outputs/apk/debug/app-debug.apk
+./gradlew connectedDebugAndroidTest
 ```
 
-Or open the folder in Android Studio and hit ▶.
+On Windows use gradlew.bat. The Android workflow publishes the debug APK under the run's Artifacts and runs device tests on API 29 and 36. Debug APK signing keys can differ across CI builds. If Android rejects an update due to the signing key, uninstall the prior debug build and reconnect the export folder after installing.
 
-* `minSdk 24` (Android 7.0) · `targetSdk 34`
-* No runtime permissions needed on Android 10+ (system photo picker + MediaStore).
-* On Android 7–9 the "Save to Downloads" button uses `WRITE_EXTERNAL_STORAGE`
-  (declared with `maxSdkVersion="28"`).
+## Export folder
 
-## Project layout
+In Settings choose Save location, then select Internal storage → Toolex using Android’s system picker. Create that directory in the picker if this is the first export. Android 7–10 also permit selecting the primary volume root, in which case Toolex creates the directory on the first save. Android 11–16 require selecting the subfolder. The app verifies the Android external-storage provider and document ID. Other folders and SD cards are rejected. An unavailable picker or denied grant leaves the preview available for retry.
 
-```
-app/src/main/java/com/toolex/
-├── MainActivity.kt                  entry point + "share images to Toolex"
-└── pdf/
-    ├── model/
-    │   ├── PdfOptions.kt            enums + page_points() port
-    │   └── Models.kt                SourceImage, ConversionResult, Progress...
-    ├── engine/                      ← the whole brain, no UI imports
-    │   ├── PageGeometry.kt          page box + placement math (unit tested)
-    │   ├── PageEncoder.kt           bitmap render → JPEG page
-    │   ├── PdfBuilder.kt            hand-written PDF writer (exact byte count)
-    │   ├── PdfConverter.kt          merged / separate / retry ladder
-    │   ├── SizeEstimator.kt         "estimated PDF size" pass
-    │   ├── ZipWriter.kt             stored ZIP for separate mode
-    │   ├── ImageLoader.kt           decode + EXIF + white background
-    │   └── Rungs.kt                 DPI/quality ladder
-    ├── ui/                          Compose screen, ViewModel, sheets
-    └── util/                        FileStore, ExportHelper, MathHeuristics
-```
+Files are ordinary documents in shared storage, survive uninstall, and can be opened by compatible file managers. Reinstalling requires granting access to the existing folder again. Android’s external-storage provider assigns unique names on collision. Only the new incomplete document is removed if a write fails. No all-files permission is requested, so the Google Play all-files-access exception is unnecessary.
 
-`docs/PDF_ENGINE.md` explains the conversion logic line by line, including how it maps
-onto the original Python functions.
+## Tools
 
-## GitHub-only workflow
-
-Yeh repo **puri tarah GitHub par** chalta hai — koi local setup zaroori nahi:
-
-| Trigger | Kya hota hai |
-|---|---|
-| koi bhi push / PR | tests + engine verification + APK build, diagnostics commit comments me |
-| `v1.0.0` jaise tag | **GitHub Release** + installable APK asset |
-| `main` push / tag | install page (QR + APK) GitHub Pages par, jab Pages enable ho |
-| Actions tab → Run workflow | manual build |
-
-```bash
-# naya version release karna
-git tag -a v1.1.0 -m "Toolex 1.1.0"
-git push origin v1.1.0
-```
-
-Release signing (optional): repo secrets me `TOOLEX_KEYSTORE` (base64-decoded
-path), `TOOLEX_STORE_PASSWORD`, `TOOLEX_KEY_ALIAS`, `TOOLEX_KEY_PASSWORD` daal
-do — CI release build ko usi key se sign karega. Bina secrets ke debug-signed
-APK milta hai (install aur test ke liye kaafi).
-
-## Verifying the engine without Android
-
-`tools/verify_pdf.py` re-implements the Kotlin engine 1:1 in Python and checks it with an
-independent PDF reader:
-
-```bash
-python3 -m venv .venv && .venv/bin/pip install pypdf Pillow
-.venv/bin/python tools/verify_pdf.py
-```
-
-It proves three things:
-1. **288 layout cases** (4 page sizes × 3 orientations × 2 fits × 4 margins × 3 photos)
-   match the original Flask `page_points()` numbers exactly.
-2. The generated PDFs are structurally valid — pages, `MediaBox`, xref offsets and the
-   embedded JPEGs all parse in `pypdf`.
-3. The size ladder actually hits targets, and honestly reports `met=False` when a target
-   is impossible.
-
-## Honest limits (same as PaperLite)
-
-* A target size is a **maximum goal**. JPEG can't always reach an extreme ceiling without
-  destroying readability, so at the smallest rung the app gives you the smallest file it
-  can make and labels it clearly instead of lying.
-* In separate mode the chosen ceiling applies to **each** PDF.
-* Transparent PNG backgrounds become white.
-* Very large originals are downsampled to what the chosen DPI needs — that is exactly why
-  the output stays small.
-
-## Credits
-
-Original web module: **PaperLite** (`reference/paperlite_app.py`, Flask + Pillow).
-This repo is the Android/Kotlin reimplementation.
+- **Image to PDF** imports multiple images, allows page ordering and removal, and supports A4, A5, Letter or original size (96 pixels per inch), orientation, margins in points, fit/fill and JPEG quality. Preview any generated page before saving, opening or sharing the PDF.
+- **Compression** measures complete PDFs including their cross-reference tables. It tries successively smaller raster sizes and searches JPEG qualities at the chosen size. If none fits, the smallest-detail result remains available with a warning. KB and MB are decimal. Processing is page by page.
+- **Photo Editing** supports draggable crop corners, moving a crop area, free or fixed proportions, quarter-turn rotation, horizontal flip, tonal adjustments, filters, a bottom caption, resizing, undo, redo and reset. Crop operates in the original upright image coordinates before rotation. Edits are nondestructive.
+- **Output** is encoded in the background after edits settle. The byte count, preview and export use the same encoded temporary file. JPG supports quality control and flattens transparency on white. PNG uses lossless encoding. Processing can downsample large sources and caps output at 8192 pixels per side and up to 8 megapixels depending on available memory. Output dimensions are shown before saving.
+- **Settings** stores appearance, PDF and JPG defaults, image format and the folder permission locally. Input and export data stay on the device. The app requests no internet access. Active editing sessions are held in memory; exported files and preferences persist.

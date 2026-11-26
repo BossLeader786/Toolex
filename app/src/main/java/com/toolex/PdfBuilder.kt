@@ -1,4 +1,4 @@
-package com.toolex.pdf.engine
+package com.toolex
 
 import java.io.BufferedOutputStream
 import java.io.File
@@ -57,6 +57,7 @@ class PdfBuilder(private val output: File) {
         drawWidthPt: Double,
         drawHeightPt: Double,
         jpegFile: File,
+        marginPt: Double = 0.0,
     ) {
         val pageObj = nextObject++
         val contentObj = nextObject++
@@ -75,6 +76,7 @@ class PdfBuilder(private val output: File) {
         val bottom = pageHeightPt - drawYpt - drawHeightPt
         val content = buildString {
             append("q\n")
+            append("${fmt(marginPt)} ${fmt(marginPt)} ${fmt(pageWidthPt-2*marginPt)} ${fmt(pageHeightPt-2*marginPt)} re W n\n")
             append("${fmt(drawWidthPt)} 0 0 ${fmt(drawHeightPt)} ")
             append("${fmt(drawXpt)} ${fmt(bottom)} cm\n")
             append("/Im0 Do\n")

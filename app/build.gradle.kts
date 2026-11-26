@@ -6,46 +6,15 @@ plugins {
 
 android {
     namespace = "com.toolex"
-    compileSdk = 34
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.toolex"
         minSdk = 24
-        targetSdk = 34
-        versionCode = 1
-        versionName = "1.0.0"
-    }
-
-    // Optional real signing: add these 4 repo secrets and release builds get
-    // signed properly. Without them, release falls back to debug signing so the
-    // CI can still produce an installable APK.
-    val keystorePath = System.getenv("TOOLEX_KEYSTORE")
-    signingConfigs {
-        if (keystorePath != null && File(keystorePath).exists()) {
-            create("ci") {
-                storeFile = File(keystorePath)
-                storePassword = System.getenv("TOOLEX_STORE_PASSWORD")
-                keyAlias = System.getenv("TOOLEX_KEY_ALIAS")
-                keyPassword = System.getenv("TOOLEX_KEY_PASSWORD")
-            }
-        }
-    }
-
-    buildTypes {
-        release {
-            isMinifyEnabled = true
-            isShrinkResources = true
-            proguardFiles(
-                getDefaultProguardFile("proguard-android-optimize.txt"),
-                "proguard-rules.pro",
-            )
-            signingConfig = signingConfigs.findByName("ci") ?: signingConfigs.getByName("debug")
-        }
-        debug {
-            applicationIdSuffix = ".debug"
-            // CI artefacts stay installable and small; no minification needed.
-            isMinifyEnabled = false
-        }
+        targetSdk = 36
+        versionCode = 2
+        versionName = "2.0.0"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     compileOptions {
@@ -88,5 +57,7 @@ dependencies {
 
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
 
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
+    androidTestImplementation("androidx.test:runner:1.6.2")
     testImplementation("junit:junit:4.13.2")
 }

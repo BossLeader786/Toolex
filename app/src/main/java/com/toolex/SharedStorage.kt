@@ -1,37 +1,52 @@
 package com.toolex
 
 import android.content.Context
-import android.os.Environment
-import android.os.Build
-import android.Manifest
-import android.content.pm.PackageManager
+import android.content.Intent
+import android.net.Uri
+import android.provider.DocumentsContract as Docs
 import java.io.File
-import java.io.IOException
 
-object SharedStorage {
-    fun hasAccess(context: Context): Boolean =
-        if (Build.VERSION.SDK_INT >= 30) Environment.isExternalStorageManager()
-        else context.checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED
+class SharedStorage(private val context: Context) {
+    private val resolver = context.contentResolver
+    private val prefs = context.getSharedPreferences("storage", Context.MODE_PRIVATE)
+    val tree: Uri? get() = prefs.getString("tree", null)?.let(Uri::parse)?.takeIf { uri ->
+        resolver.persistedUriPermissions.any { it.uri == uri && it.isWritePermission && it.isReadPermission }
+    }
 
-    @Synchronized
-    fun save(context: Context, bytes: ByteArray, name: String, extension: String): File {
-        require(extension in setOf("jpg", "png", "pdf"))
-        check(hasAccess(context)) { "Allow storage access to save files." }
-        val directory = File(Environment.getExternalStorageDirectory(), "Toolex")
-        if (!directory.isDirectory && !directory.mkdirs()) throw IOException("Cannot create Toolex folder")
-        val safe = name.replace(Regex("[^a-zA-Z0-9_-]"), "_").take(80).ifBlank { "Toolex" }
-        var output = File(directory, "$safe.$extension")
-        var index = 1
-        while (!output.createNewFile()) {
-            output = File(directory, "${safe}_${index++}.$extension")
+    fun connect(uri: Uri) {
+        require(uri.authority == "com.android.externalstorage.documents" &&
+            (Docs.getTreeDocumentId(uri) == "primary:Toolex" ||
+                (android.os.Build.VERSION.SDK_INT < 30 && Docs.getTreeDocumentId(uri) == "primary:"))) {
+            "Choose Internal storage → Toolex. Create the Toolex folder in the picker if needed."
         }
+        resolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+        prefs.edit().putString("tree", uri.toString()).apply()
+    }
+
+    @Synchronized fun save(file: File, title: String, ext: String, mime: String): Uri {
+        val folder = requireNotNull(tree) { "Connect the Toolex folder in Settings." }
+        val id = Docs.getTreeDocumentId(folder)
+        val parent = if (id == "primary:") {
+            val child = Docs.buildDocumentUriUsingTree(folder, "primary:Toolex")
+            val exists = resolver.query(child, arrayOf(Docs.Document.COLUMN_MIME_TYPE), null, null, null)?.use {
+                it.moveToFirst() && it.getString(0) == Docs.Document.MIME_TYPE_DIR
+            } ?: false
+            if (exists) child else {
+                val root = Docs.buildDocumentUriUsingTree(folder, id)
+                requireNotNull(Docs.createDocument(resolver, root, Docs.Document.MIME_TYPE_DIR, "Toolex")).also {
+                    require(Docs.getDocumentId(it) == "primary:Toolex") { "The Toolex folder could not be created." }
+                }
+            }
+        } else Docs.buildDocumentUriUsingTree(folder, id)
+        val stem = title.trim().replace(Regex("""[\\/:*?"<>|\p{Cntrl}]"""), "_").take(80).ifBlank { "Toolex" }
+        // ExternalStorageProvider creates a unique file when the name is taken.
+        val uri = requireNotNull(Docs.createDocument(resolver, parent, mime, "$stem.$ext")) { "Could not create the file. Check folder access." }
         try {
-            output.writeBytes(bytes)
+            requireNotNull(resolver.openOutputStream(uri, "w")).use { sink -> file.inputStream().use { it.copyTo(sink) } }
         } catch (e: Exception) {
-            output.delete()
+            runCatching { Docs.deleteDocument(resolver, uri) }
             throw e
         }
-        android.media.MediaScannerConnection.scanFile(context, arrayOf(output.absolutePath), null, null)
-        return output
+        return uri
     }
 }
