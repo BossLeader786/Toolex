@@ -78,8 +78,21 @@ class Studio(val context: Context) {
         val crop = edit.crop
         val needed = (max(w,h) / min(crop.right-crop.left, crop.bottom-crop.top)).toInt().coerceIn(1,8192)
         val src = decode(photo, needed)
-        val bitmap = try { Bitmap.createBitmap(w,h,Bitmap.Config.ARGB_8888) } catch (e: Throwable) { src.recycle(); throw e }
+        val bitmap = try { render(src, edit, w, h) } finally { src.recycle() }
         val jpg = edit.format == "JPG"
+        val ext = if (jpg) "jpg" else "png"
+        val file = temp(ext)
+        try {
+            file.outputStream().buffered().use { check(bitmap.compress(if (jpg) Bitmap.CompressFormat.JPEG else Bitmap.CompressFormat.PNG,edit.quality,it)) }
+            return Product(file,ext,if (jpg) "image/jpeg" else "image/png",w,h)
+        } catch (e: Throwable) { file.delete(); throw e }
+        finally { bitmap.recycle() }
+    }
+
+    fun render(src: Bitmap, edit: Edit, w: Int, h: Int): Bitmap {
+        val crop = edit.crop
+        val jpg = edit.format == "JPG"
+        val bitmap = Bitmap.createBitmap(w,h,Bitmap.Config.ARGB_8888)
         try {
             val canvas = Canvas(bitmap)
             if (jpg) canvas.drawColor(Color.WHITE)
@@ -108,13 +121,7 @@ class Studio(val context: Context) {
                 }
                 canvas.drawText(edit.text,w*.05f,h*.92f,label)
             }
-            val ext = if (jpg) "jpg" else "png"
-            val file = temp(ext)
-            try {
-                file.outputStream().buffered().use { check(bitmap.compress(if (jpg) Bitmap.CompressFormat.JPEG else Bitmap.CompressFormat.PNG,edit.quality,it)) }
-                return Product(file,ext,if (jpg) "image/jpeg" else "image/png",w,h)
-            } catch (e: Throwable) { file.delete(); throw e }
-        } finally { bitmap.recycle(); src.recycle() }
+            return bitmap
+        } catch (e: Throwable) { bitmap.recycle(); throw e }
     }
 }
-

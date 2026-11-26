@@ -27,14 +27,28 @@ import kotlin.math.*
 
 @Composable fun EditorScreen(vm:Workspace,connect:()->Unit) {
     val picker=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()){uri->if(uri!=null)vm.import(listOf(uri),true)}
-    Entry(if(vm.photo==null)"Select a photo" else "Change photo",vm.photo?.name ?: "Open an image to edit",Icons.Outlined.AddPhotoAlternate){
-        if(!vm.importing)picker.launch(arrayOf("image/*"))
+    val context=androidx.compose.ui.platform.LocalContext.current
+    LaunchedEffect(Unit) {
+        if(vm.photo==null) vm.import(listOf(android.net.Uri.parse("android.resource://${context.packageName}/drawable/studio_photo")),true)
+    }
+    TextButton(onClick={if(!vm.importing)picker.launch(arrayOf("image/*"))}) {
+        Icon(Icons.Outlined.AddPhotoAlternate,null);Spacer(Modifier.width(8.dp));Text("Select a photo")
     }
     val p=vm.photo ?: return
     val e=vm.edit
     var tool by rememberSaveable { mutableStateOf("Adjust") }
     if(tool=="Crop") CropView(vm,p,e)
     else key(p) {
+        val source by produceState<Bitmap?>(null,p) {
+            value=withContext(Dispatchers.IO) { runCatching {vm.studio.decode(p,800)}.getOrNull() }
+        }
+        val live by produceState<Bitmap?>(null,source,e) {
+            val original=source ?: return@produceState
+            value=withContext(Dispatchers.Default) { runCatching {
+                val (w,h)=vm.studio.dimensions(p,e);val scale=min(1.0,720.0/max(w,h))
+                vm.studio.render(original,e,max(1,(w*scale).roundToInt()),max(1,(h*scale).roundToInt()))
+            }.getOrNull() }
+        }
         val preview by produceState<Bitmap?>(null,vm.image) {
             vm.image?.let { output ->
                 val bm=withContext(Dispatchers.IO) {
@@ -46,7 +60,7 @@ import kotlin.math.*
             }
         }
         val modifier=Modifier.fillMaxWidth().height(240.dp)
-        preview?.let { Image(it.asImageBitmap(),"Edited image",modifier) } ?: Thumb(vm,p,640,modifier)
+        (if(vm.image!=null) preview ?: live else live)?.let { Image(it.asImageBitmap(),"Edited image",modifier) } ?: Thumb(vm,p,640,modifier)
     }
     Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(6.dp)){
         listOf("Crop","Adjust","Filters","Text","Resize").forEach { FilterChip(tool==it,{tool=it},{Text(it)}) }

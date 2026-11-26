@@ -36,11 +36,31 @@ fun bytes(n:Long) = java.text.NumberFormat.getIntegerInstance().format(n)+" B"
     val picker=rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { vm.import(it,false) }
     var options by rememberSaveable { mutableStateOf(false) }
     val pages=vm.pages
-    Entry("Add Images",if(vm.importing)"Reading images…" else "Choose photos from your device",Icons.Outlined.AddPhotoAlternate) {
-        if(!vm.importing) picker.launch(arrayOf("image/*"))
+    var arrange by rememberSaveable {mutableStateOf(true)}
+    val ink=MaterialTheme.colorScheme.onSurface
+    Box(Modifier.fillMaxWidth().height(if(pages.isEmpty())190.dp else 100.dp).clickable {
+        if(!vm.importing)picker.launch(arrayOf("image/*"))
+    },contentAlignment=Alignment.Center) {
+        Canvas(Modifier.fillMaxSize()) {
+            val r=min(size.width/2,size.height*.91f)
+            val path=androidx.compose.ui.graphics.Path().apply {
+                moveTo(1f,size.height);lineTo(1f,r)
+                cubicTo(1f,-r*.32f,size.width-1,-r*.32f,size.width-1,r)
+                lineTo(size.width-1,size.height)
+            }
+            drawPath(path,ink.copy(alpha=.65f),style=androidx.compose.ui.graphics.drawscope.Stroke(1.dp.toPx(),pathEffect=androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(5f,5f))))
+            drawLine(ink,androidx.compose.ui.geometry.Offset(0f,size.height),androidx.compose.ui.geometry.Offset(size.width,size.height))
+        }
+        Column(horizontalAlignment=Alignment.CenterHorizontally) {
+            Icon(Icons.Outlined.AddPhotoAlternate,null,Modifier.size(42.dp))
+            Text("Add Images",style=MaterialTheme.typography.titleMedium)
+            Text(if(vm.importing)"Reading images…" else "Choose photos from your device",style=MaterialTheme.typography.bodySmall)
+        }
     }
-    if (pages.isNotEmpty()) {
-        Text("Arrange Pages",style=MaterialTheme.typography.titleLarge)
+    Entry("Arrange Pages",if(pages.isEmpty())"Add images to arrange pages" else "${pages.size} pages · original ${bytes(pages.sumOf { it.bytes })}",Icons.Outlined.Collections) {
+        if(pages.isEmpty())picker.launch(arrayOf("image/*")) else arrange=!arrange
+    }
+    if (pages.isNotEmpty() && arrange) {
         LazyRow(horizontalArrangement=Arrangement.spacedBy(12.dp)) {
             itemsIndexed(pages) { i,p ->
                 Column(Modifier.width(154.dp)) {
@@ -55,7 +75,7 @@ fun bytes(n:Long) = java.text.NumberFormat.getIntegerInstance().format(n)+" B"
                 }
             }
         }
-        Text("${pages.size} pages · original ${bytes(pages.sumOf { it.bytes })}")
+
     }
     Entry("PDF Settings","${vm.paper.size} · ${vm.paper.orientation} · ${vm.paper.fit}",Icons.Outlined.Tune) { options=!options }
     androidx.compose.animation.AnimatedVisibility(options) {
@@ -70,7 +90,7 @@ fun bytes(n:Long) = java.text.NumberFormat.getIntegerInstance().format(n)+" B"
             Choice("Target unit",p.unit,listOf("KB","MB")){vm.configure(p.copy(unit=it))}
         }
     }
-    Button(onClick=vm::generate,enabled=pages.isNotEmpty() && !vm.importing,modifier=Modifier.fillMaxWidth()) { Text("Generate PDF") }
+    Button(onClick=vm::generate,enabled=pages.isNotEmpty() && !vm.importing && !vm.generating,modifier=Modifier.fillMaxWidth()) { Text("Generate PDF") }
     if(vm.pdfStatus.isNotEmpty()) Text(vm.pdfStatus)
     vm.pdf?.let { product ->
         Text("Generated PDF · ${bytes(product.file.length())}",style=MaterialTheme.typography.titleMedium)

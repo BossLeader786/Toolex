@@ -32,6 +32,7 @@ class Workspace(app: Application): AndroidViewModel(app) {
     var notice by mutableStateOf("")
     var connected by mutableStateOf(storage.tree != null)
     var saving by mutableStateOf(false); private set
+    var generating by mutableStateOf(false); private set
     var importing by mutableStateOf(false); private set
     private val undo = mutableStateListOf<Edit>()
     private val redo = mutableStateListOf<Edit>()
@@ -56,7 +57,7 @@ class Workspace(app: Application): AndroidViewModel(app) {
         if (pages.isEmpty()) configure(paper.copy(size=d.paper,quality=d.pdf))
     }
     fun configure(value: Paper) { paper=value; invalidatePdf() }
-    private fun invalidatePdf() { building?.cancel(); retire(pdf); pdf=null; pdfStatus="" }
+    private fun invalidatePdf() { building?.cancel(); generating=false; retire(pdf); pdf=null; pdfStatus="" }
     fun move(i: Int, to: Int) {
         if (i !in pages.indices) return
         val p = pages.removeAt(i)
@@ -109,7 +110,7 @@ class Workspace(app: Application): AndroidViewModel(app) {
         if (pages.isEmpty()) return
         invalidatePdf()
         val inputs=pages.toList(); val settings=paper
-        pdfStatus="Preparing pages…"
+        generating=true; pdfStatus="Preparing pages…"
         building=viewModelScope.launch {
             var pending: Product?=null
             try {
@@ -122,7 +123,7 @@ class Workspace(app: Application): AndroidViewModel(app) {
             } catch (e: CancellationException) { throw e }
             catch (e: Exception) { pdfStatus=e.message ?: "Could not create PDF." }
             catch (e: OutOfMemoryError) { pdfStatus="Not enough memory to create this PDF." }
-            finally { pending?.file?.delete() }
+            finally { pending?.file?.delete(); if (isActive) generating=false }
         }
     }
     fun save(p: Product, name: String) {

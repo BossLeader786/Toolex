@@ -99,29 +99,43 @@ class MainActivity: ComponentActivity() {
 }
 @Composable private fun Hero(title:String, subtitle:String, index:Int) {
     val ink = MaterialTheme.colorScheme.onSurface
-    Box(Modifier.fillMaxWidth().height(184.dp).clipToBounds()) {
-        Canvas(Modifier.align(Alignment.TopEnd).width(86.dp).fillMaxHeight()) {
-            val w=size.width
-            drawCircle(if(index==1) Red else Blue,w*.95f,Offset(w*1.15f,0f))
-            drawLine(if(index==1) Blue else Red,Offset(w*.33f,18.dp.toPx()),Offset(w*.33f,147.dp.toPx()),1.4.dp.toPx())
-            drawCircle(Gold,14.dp.toPx(),Offset(w*.33f,101.dp.toPx()))
-            drawCircle(ink,w*.9f,Offset(w*1.45f,154.dp.toPx()),style=androidx.compose.ui.graphics.drawscope.Stroke(1.dp.toPx()))
+    Box(Modifier.fillMaxWidth().height(if(index==0) 228.dp else 196.dp).clipToBounds()) {
+        Canvas(Modifier.align(Alignment.TopEnd).width(132.dp).fillMaxHeight()) {
+            val w=size.width;val h=size.height
+            when(index) {
+                0 -> {
+                    drawCircle(Blue,w*.82f,Offset(w*1.12f,0f))
+                    drawLine(Red,Offset(w*.29f,24.dp.toPx()),Offset(w*.29f,h*.90f),1.5.dp.toPx())
+                    drawArc(ink,263f,73f,false,Offset(w*-.22f,h*.50f),androidx.compose.ui.geometry.Size(w*1.9f,h*.78f),style=androidx.compose.ui.graphics.drawscope.Stroke(1.dp.toPx()))
+                    drawCircle(Gold,16.dp.toPx(),Offset(w*.29f,h*.53f))
+                }
+                1 -> {
+                    drawCircle(Gold,w*.58f,Offset(w*1.08f,h*.39f))
+                    drawRect(Red,Offset(w*.24f,h*.55f),androidx.compose.ui.geometry.Size(24.dp.toPx(),24.dp.toPx()))
+                    drawLine(ink,Offset(w*.05f,h*.34f),Offset(w,h*.93f),1.dp.toPx())
+                }
+                else -> {
+                    drawCircle(Blue,23.dp.toPx(),Offset(w*.55f,h*.52f))
+                    drawLine(Gold,Offset(w*.68f,h*.09f),Offset(w*.68f,h*.93f),3.dp.toPx())
+                    drawLine(ink,Offset(0f,h*.82f),Offset(w,h*.23f),1.dp.toPx())
+                }
+            }
         }
-        Column(Modifier.align(Alignment.CenterStart).padding(start=24.dp,end=75.dp)) {
-            Text(title,fontSize=39.sp,lineHeight=41.sp,letterSpacing=(-2).sp,fontWeight=FontWeight.Normal)
-            Spacer(Modifier.height(10.dp)); HorizontalDivider(Modifier.width(160.dp),color=if(index==1) Blue else Red)
-            Spacer(Modifier.height(9.dp)); Text(subtitle,style=MaterialTheme.typography.bodyMedium)
+        Column(Modifier.align(Alignment.CenterStart).padding(start=24.dp,end=80.dp)) {
+            Text(when(index){0->"Image\nto PDF";1->"Photo\nEditing";else->title},fontSize=42.sp,lineHeight=41.sp,letterSpacing=(-2).sp,fontWeight=FontWeight.Normal)
+            Spacer(Modifier.height(7.dp)); HorizontalDivider(Modifier.width(if(index==0)210.dp else 112.dp),color=if(index==1) Blue else Red)
+            Spacer(Modifier.height(7.dp)); Text(subtitle,Modifier.width(148.dp),style=MaterialTheme.typography.bodyMedium)
         }
     }
 }
 @Composable fun Entry(title:String, subtitle:String,icon:ImageVector,onClick:()->Unit) {
-    OutlinedCard(onClick=onClick,modifier=Modifier.fillMaxWidth(),shape=RoundedCornerShape(6.dp),
-        colors=CardDefaults.outlinedCardColors(containerColor=MaterialTheme.colorScheme.surface)) {
-        Row(Modifier.padding(16.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(14.dp)) {
-            Icon(icon,null,tint=MaterialTheme.colorScheme.secondary)
-            Column(Modifier.weight(1f)) { Text(title,fontSize=19.sp); Text(subtitle,style=MaterialTheme.typography.bodySmall) }
-            Icon(Icons.Outlined.ChevronRight,null)
+    Column(Modifier.fillMaxWidth().clickable(onClick=onClick)) {
+        Row(Modifier.fillMaxWidth().padding(vertical=12.dp,horizontal=4.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(14.dp)) {
+            Icon(icon,null,modifier=Modifier.size(27.dp))
+            Column(Modifier.weight(1f)) { Text(title,fontSize=18.sp); Text(subtitle,style=MaterialTheme.typography.bodySmall) }
+            Icon(Icons.Outlined.ChevronRight,null,Modifier.size(19.dp))
         }
+        HorizontalDivider(thickness=0.5.dp)
     }
 }
 @Composable fun Choice(label:String,value:String,items:List<String>,set:(String)->Unit) {
@@ -143,15 +157,24 @@ class MainActivity: ComponentActivity() {
 }
 @Composable fun Settings(vm:Workspace, connect:()->Unit) {
     val d=vm.defaults
-    Choice("Appearance",d.theme,listOf("System","Light","Dark")) { vm.preferences(d.copy(theme=it)) }
-    HorizontalDivider()
-    Choice("Default page size",d.paper,sizes) { vm.preferences(d.copy(paper=it)) }
-    Dial("Default PDF quality",d.pdf.toFloat(),10f..100f) { vm.preferences(d.copy(pdf=it.toInt())) }
-    Choice("Default image format",d.format,listOf("JPG","PNG")) { vm.preferences(d.copy(format=it)) }
-    Dial("Default JPG quality",d.jpg.toFloat(),1f..100f) { vm.preferences(d.copy(jpg=it.toInt())) }
+    var section by rememberSaveable { mutableStateOf("") }
+    fun toggle(value:String) { section=if(section==value) "" else value }
+    Entry("Appearance",d.theme,Icons.Outlined.DarkMode){toggle("theme")}
+    if(section=="theme") Choice("Appearance",d.theme,listOf("System","Light","Dark")) { vm.preferences(d.copy(theme=it)) }
+    Entry("PDF Options","Default size, quality",Icons.Outlined.Description){toggle("pdf")}
+    if(section=="pdf") {
+        Choice("Default page size",d.paper,sizes) { vm.preferences(d.copy(paper=it)) }
+        Dial("Default PDF quality",d.pdf.toFloat(),10f..100f) { vm.preferences(d.copy(pdf=it.toInt())) }
+    }
+    Entry("Image Options","Default format, JPG quality",Icons.Outlined.Image){toggle("image")}
+    if(section=="image") {
+        Choice("Default image format",d.format,listOf("JPG","PNG")) { vm.preferences(d.copy(format=it)) }
+        Dial("Default JPG quality",d.jpg.toFloat(),1f..100f) { vm.preferences(d.copy(jpg=it.toInt())) }
+    }
     Entry("Save location","/storage/emulated/0/Toolex/ · "+if(vm.connected)"Connected" else "Connect folder",Icons.Outlined.Folder,connect)
-    Text("Privacy",style=MaterialTheme.typography.titleMedium)
-    Text("All processing happens on your device. No accounts, analytics, ads or network access.")
+    Text("ABOUT",style=MaterialTheme.typography.labelSmall)
+    Entry("Privacy","Offline processing",Icons.Outlined.VerifiedUser){toggle("privacy")}
+    if(section=="privacy") Text("All processing happens on your device. No accounts, analytics, ads or network access.")
     val c=LocalContext.current
     Text("App version   "+remember { c.packageManager.getPackageInfo(c.packageName,0).versionName },style=MaterialTheme.typography.bodySmall)
 }
