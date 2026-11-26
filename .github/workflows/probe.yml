@@ -9,24 +9,24 @@ permissions:
   contents: write
 
 jobs:
-  release-build:
-    name: Release build (diagnostics)
+  apt:
+    name: APK apt-check
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
 
-      - name: Set up JDK 17
+      - name: Set up JDK 21
         uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: "17"
+          java-version: "21"
 
-      - name: Build release with full log
+      - name: Assemble debug with full log
         shell: bash
         run: |
-          ./gradlew :app:assembleRelease --no-daemon --stacktrace > build.log 2>&1
+          ./gradlew :app:assembleDebug --no-daemon --stacktrace > build.log 2>&1
           echo "exit=$?"
-          tail -40 build.log
+          tail -30 build.log
 
       - name: Post diagnostics
         if: always()
@@ -37,24 +37,17 @@ jobs:
         run: |
           python3 - <<'PYEOF'
           import json, os, re, urllib.request
-
-          raw = open("build.log", errors="replace").read() if os.path.exists("build.log") else "no build.log"
+          raw = open("build.log", errors="replace").read() if os.path.exists("build.log") else "no log"
           lines = raw.splitlines()
           keep = [f"{i}: {l}" for i, l in enumerate(lines)
-                  if re.search(r"(What went wrong|Caused by:|Execution failed|FAILED|error:|^e: |keystore|signing|SigningConfig|Missing|not found|No such)", l)]
-          filtered = "\n".join(keep)[-30000:] or "(nothing matched)"
-          tail = "\n".join(lines[-6000:])
-
-          def post(body, label):
-              req = urllib.request.Request(
-                  f"https://api.github.com/repos/{os.environ['GH_REPO']}/commits/{os.environ['GH_SHA']}/comments",
-                  data=json.dumps({"body": f"### {label}\n```\n{body}\n```"}).encode(),
-                  headers={"Authorization": "Bearer " + os.environ["GH_TOKEN"],
-                           "Accept": "application/vnd.github+json",
-                           "Content-Type": "application/json"})
-              urllib.request.urlopen(req)
-
-          post(filtered, "Release build errors")
-          post(tail, "Release build log tail")
+                  if re.search(r"(What went wrong|Caused by:|Execution failed|FAILED|error:|^e: |daemon|OutOfMemory|License|license|Sdk|sdk|not found|No such)", l)]
+          body = "\n".join(keep)[-30000:] or "(nothing matched)"
+          req = urllib.request.Request(
+              f"https://api.github.com/repos/{os.environ['GH_REPO']}/commits/{os.environ['GH_SHA']}/comments",
+              data=json.dumps({"body": "### apt-check\n```\n" + body + "\n```"}).encode(),
+              headers={"Authorization": "Bearer " + os.environ["GH_TOKEN"],
+                       "Accept": "application/vnd.github+json",
+                       "Content-Type": "application/json"})
+          urllib.request.urlopen(req)
           print("posted")
           PYEOF
