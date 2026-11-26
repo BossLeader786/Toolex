@@ -132,6 +132,21 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Enable GitHub Pages (needs a one-time admin token)
+        continue-on-error: true
+        env:
+          PAGES_TOKEN: ${{ secrets.PAGES_TOKEN }}
+        run: |
+          if [ -n "$PAGES_TOKEN" ]; then
+            curl -sS -X POST \
+              -H "Authorization: Bearer $PAGES_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              -d '{"build_type":"legacy","source":{"branch":"gh-pages","path":"/"}}' \
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/pages" || true
+          else
+            echo "PAGES_TOKEN secret not set; enable Pages manually (see docs/GITHUB_SETUP.md)"
+          fi
+
       - name: Build site
         run: |
           pip install --quiet "qrcode[pil]"
