@@ -9,12 +9,12 @@ import java.util.Locale
 /**
  * Minimal, dependency-free PDF 1.4 writer for "one photo per page" documents.
  *
- * Each page is `q ... cm /Im0 Do Q` inside a content stream, the photo itself is
- * an embedded JPEG (`/DCTDecode`) — exactly the format Pillow produces when you
- * save JPEG pages as PDF, so readers see the same quality/size profile.
+ * Each page is `q ... cm /Im0 Do Q` inside a content stream, the photo itself is an embedded JPEG
+ * (`/DCTDecode`) — exactly the format Pillow produces when you save JPEG pages as PDF, so readers
+ * see the same quality/size profile.
  *
- * Why hand-written instead of PdfDocument: PdfDocument re-encodes images and
- * gives us no byte-size reports, which the "fit under X MB" feature needs.
+ * Why hand-written instead of PdfDocument: PdfDocument re-encodes images and gives us no byte-size
+ * reports, which the "fit under X MB" feature needs.
  */
 class PdfBuilder(private val output: File) {
 
@@ -26,7 +26,8 @@ class PdfBuilder(private val output: File) {
     private val pageObjectNumbers = mutableListOf<Int>()
 
     /** Byte size of everything written so far (xref-safe, no extra seeking). */
-    val bytesWritten: Long get() = counter.count
+    val bytesWritten: Long
+        get() = counter.count
 
     private val catalogObj = nextObject++
     private val pagesObj = nextObject++
@@ -34,7 +35,9 @@ class PdfBuilder(private val output: File) {
     fun open(title: String) {
         // Header + a binary comment so tools treat the file as binary.
         counter.write("%PDF-1.4\n".toByteArray(Charsets.ISO_8859_1))
-        counter.write(byteArrayOf(0x25, 0xE2.toByte(), 0xE3.toByte(), 0xCF.toByte(), 0xD3.toByte(), 0x0A))
+        counter.write(
+            byteArrayOf(0x25, 0xE2.toByte(), 0xE3.toByte(), 0xCF.toByte(), 0xD3.toByte(), 0x0A)
+        )
         val info = nextObject++
         infoObjectNumber = info
         infoTitle = title
@@ -44,9 +47,7 @@ class PdfBuilder(private val output: File) {
     private var infoObjectNumber = 0
     private var infoTitle = "Document"
 
-    /**
-     * @param jpegBytes already JPEG-encoded page (RGB, 8 bit)
-     */
+    /** @param jpegBytes already JPEG-encoded page (RGB, 8 bit) */
     fun addPage(
         pageWidthPt: Double,
         pageHeightPt: Double,
@@ -69,14 +70,16 @@ class PdfBuilder(private val output: File) {
             "<< /Type /Page /Parent $pagesObj 0 R " +
                 "/MediaBox [0 0 ${fmt(pageWidthPt)} ${fmt(pageHeightPt)}] " +
                 "/Resources << /XObject << /Im0 $imageObj 0 R >> /ProcSet [/PDF /ImageC] >> " +
-                "/Contents $contentObj 0 R >>\nendobj\n",
+                "/Contents $contentObj 0 R >>\nendobj\n"
         )
 
         // --- Content stream (PDF origin is bottom-left) ------------------
         val bottom = pageHeightPt - drawYpt - drawHeightPt
         val content = buildString {
             append("q\n")
-            append("${fmt(marginPt)} ${fmt(marginPt)} ${fmt(pageWidthPt-2*marginPt)} ${fmt(pageHeightPt-2*marginPt)} re W n\n")
+            append(
+                "${fmt(marginPt)} ${fmt(marginPt)} ${fmt(pageWidthPt-2*marginPt)} ${fmt(pageHeightPt-2*marginPt)} re W n\n"
+            )
             append("${fmt(drawWidthPt)} 0 0 ${fmt(drawHeightPt)} ")
             append("${fmt(drawXpt)} ${fmt(bottom)} cm\n")
             append("/Im0 Do\n")
@@ -94,7 +97,7 @@ class PdfBuilder(private val output: File) {
             "<< /Type /XObject /Subtype /Image " +
                 "/Width $imageWidthPx /Height $imageHeightPx " +
                 "/ColorSpace /DeviceRGB /BitsPerComponent 8 " +
-                "/Filter /DCTDecode /Length ${jpegFile.length()} >>\nstream\n",
+                "/Filter /DCTDecode /Length ${jpegFile.length()} >>\nstream\n"
         )
         jpegFile.inputStream().use { input -> input.copyTo(counter, 1 shl 16) }
         write("\nendstream\nendobj\n")
@@ -117,7 +120,7 @@ class PdfBuilder(private val output: File) {
         beginObject(infoObjectNumber)
         write(
             "<< /Producer (Toolex PDF) /Creator (Toolex Android) " +
-                "/Title (${pdfString(infoTitle)}) /CreationDate (D:${pdfDate()}) >>\nendobj\n",
+                "/Title (${pdfString(infoTitle)}) /CreationDate (D:${pdfDate()}) >>\nendobj\n"
         )
 
         val xrefOffset = counter.count
@@ -129,7 +132,9 @@ class PdfBuilder(private val output: File) {
             val offset = offsets[i] ?: 0L
             xref.append(String.format(Locale.US, "%010d 00000 n \n", offset))
         }
-        xref.append("trailer\n<< /Size ${maxObj + 1} /Root $catalogObj 0 R /Info $infoObjectNumber 0 R >>\n")
+        xref.append(
+            "trailer\n<< /Size ${maxObj + 1} /Root $catalogObj 0 R /Info $infoObjectNumber 0 R >>\n"
+        )
         xref.append("startxref\n$xrefOffset\n%%EOF\n")
         write(xref.toString())
 
@@ -155,10 +160,8 @@ class PdfBuilder(private val output: File) {
         if (value == value.toLong().toDouble()) value.toLong().toString()
         else String.format(Locale.US, "%.2f", value)
 
-    private fun pdfString(raw: String): String = raw
-        .replace("\\", "\\\\")
-        .replace("(", "\\(")
-        .replace(")", "\\)")
+    private fun pdfString(raw: String): String =
+        raw.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
 
     /** PDF date is `D:YYYYMMDDHHmmSS` in UTC-ish local time; fine for metadata. */
     private fun pdfDate(): String {
@@ -191,6 +194,7 @@ class PdfBuilder(private val output: File) {
         }
 
         override fun flush() = inner.flush()
+
         override fun close() = inner.close()
     }
 }
