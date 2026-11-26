@@ -98,7 +98,7 @@ class PdfConverter(
         started: Long,
         onProgress: (Progress) -> Unit,
     ): ConversionResult {
-        val base = fileStore.safeBaseName(items.first().first.displayName)
+        val base = FileStore.safeBaseName(items.first().first.displayName)
         val fileName = if (items.size > 1) "${base}_merged.pdf" else "$base.pdf"
         val output = fileStore.newOutputFile(fileName)
 
@@ -124,7 +124,7 @@ class PdfConverter(
                     ),
                 )
             }
-            writePdf(attempt, fileStore.safeBaseName(fileName), pages)
+            writePdf(attempt, FileStore.safeBaseName(fileName), pages)
             chosenPages = pages.size
 
             if (best == null || attempt.length() < best!!.first.length()) {
@@ -165,7 +165,7 @@ class PdfConverter(
 
         items.forEachIndexed { index, item ->
             currentCoroutineContext().ensureActive()
-            val name = uniqueName(fileStore.safeBaseName(item.first.displayName) + ".pdf", usedNames)
+            val name = uniqueName(FileStore.safeBaseName(item.first.displayName) + ".pdf", usedNames)
             val file = File(scratch, "sep_$index.pdf")
             val pages = renderPages(listOf(item), options, Rungs.NORMAL, scratch) { _, _ -> }
             writePdf(file, name.removeSuffix(".pdf"), pages)

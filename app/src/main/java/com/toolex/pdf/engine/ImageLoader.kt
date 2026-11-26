@@ -9,6 +9,7 @@ import android.net.Uri
 import androidx.exifinterface.media.ExifInterface
 import com.toolex.pdf.model.ImageInfo
 import com.toolex.pdf.model.PdfException
+import java.io.InputStream
 import kotlin.math.max
 import kotlin.math.roundToInt
 

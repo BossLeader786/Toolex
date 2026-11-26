@@ -3,6 +3,7 @@ package com.toolex.pdf.ui
 import android.app.Application
 import android.content.Intent
 import android.net.Uri
+import androidx.core.content.IntentCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.toolex.pdf.engine.ImageLoader
@@ -97,9 +98,14 @@ class PdfViewModel(app: Application) : AndroidViewModel(app) {
     fun consumeShareIntent(intent: Intent?) {
         if (intent == null) return
         val uris = when (intent.action) {
-            Intent.ACTION_SEND -> listOfNotNull(intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM))
-            Intent.ACTION_SEND_MULTIPLE ->
-                intent.getParcelableArrayListExtra<Uri>(Intent.EXTRA_STREAM) ?: emptyList()
+            Intent.ACTION_SEND -> listOfNotNull(
+                IntentCompat.getParcelableExtra(intent, Intent.EXTRA_STREAM, Uri::class.java),
+            )
+            Intent.ACTION_SEND_MULTIPLE -> IntentCompat.getParcelableArrayListExtra(
+                intent,
+                Intent.EXTRA_STREAM,
+                Uri::class.java,
+            ) ?: emptyList()
             else -> return
         }
         addImages(uris)

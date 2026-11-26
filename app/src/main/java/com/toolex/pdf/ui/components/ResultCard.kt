@@ -19,7 +19,7 @@ import androidx.compose.material.icons.rounded.Description
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material.icons.rounded.FolderZip
-import androidx.compose.material.icons.rounded.OpenInNew
+import androidx.compose.material.icons.automirrored.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -113,7 +113,7 @@ fun ResultCard(
 
             SecondaryActions(
                 primaryLabel = "Open",
-                primaryIcon = Icons.Rounded.OpenInNew,
+                primaryIcon = Icons.AutoMirrored.Rounded.OpenInNew,
                 onPrimary = onOpen,
                 secondaryLabel = "Save",
                 secondaryIcon = Icons.Rounded.Download,
