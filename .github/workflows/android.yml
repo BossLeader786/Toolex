@@ -1,12 +1,25 @@
-name: Android CI
+name: Build APK
 
 on:
   push:
     branches: ["**"]
+    tags: ["v*"]
   pull_request:
+  workflow_dispatch:        # Actions tab se "Run workflow" -> APK download
+
+permissions:
+  contents: write           # needed to attach the APK to a GitHub Release
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  build:
+  # ---------------------------------------------------------------------------
+  # 1. Unit tests: page math, size parsing, name sanitising, ladder ordering.
+  # ---------------------------------------------------------------------------
+  test:
+    name: Unit tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -16,24 +29,27 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+      - uses: android-actions/setup-android@v3
 
       - uses: gradle/actions/setup-gradle@v4
 
-      # Page math, name sanitising, override parsing, ladder ordering.
-      - name: Unit tests
+      - name: Run JVM unit tests
         run: ./gradlew :app:testDebugUnitTest --stacktrace
 
-      - name: Assemble debug APK
-        run: ./gradlew :app:assembleDebug --stacktrace
-
-      - uses: actions/upload-artifact@v4
+      - name: Publish test report
+        if: always()
+        uses: actions/upload-artifact@v4
         with:
-          name: toolex-debug-apk
-          path: app/build/outputs/apk/debug/*.apk
+          name: unit-test-report
+          path: app/build/reports/tests/testDebugUnitTest
+          if-no-files-found: ignore
 
-  verify-pdf-engine:
+  # ---------------------------------------------------------------------------
+  # 2. Engine verification: a 1:1 Python port is checked against the original
+  #    Flask maths + real PDFs are read back with pypdf.
+  # ---------------------------------------------------------------------------
+  verify-engine:
+    name: Verify PDF engine
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -42,10 +58,69 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install verification tools
-        run: pip install pypdf Pillow
+      - run: pip install pypdf Pillow
 
-      # Re-implementation of the engine checked against the original Flask maths
-      # and against real PDFs read back with pypdf.
-      - name: Verify engine logic
+      - name: Geometry + PDF structure checks
         run: python3 tools/verify_pdf.py
+
+  # ---------------------------------------------------------------------------
+  # 3. Build the installable APK and keep it as a run artifact.
+  # ---------------------------------------------------------------------------
+  build:
+    name: Build debug APK
+    needs: [test, verify-engine]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: android-actions/setup-android@v3
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Assemble debug APK
+        run: ./gradlew :app:assembleDebug --stacktrace
+
+      - name: Collect APK
+        run: |
+          mkdir -p artifacts
+          cp app/build/outputs/apk/debug/*.apk "artifacts/Toolex-${GITHUB_REF_NAME}-debug.apk"
+          ls -lh artifacts
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: toolex-debug-apk
+          path: artifacts/*.apk
+          retention-days: 90
+
+  # ---------------------------------------------------------------------------
+  # 4. Tag push (v1.0.0 ...) -> public GitHub Release with the APK attached,
+  #    so the phone can install it with one tap from the Releases page.
+  # ---------------------------------------------------------------------------
+  release:
+    name: Publish GitHub Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: toolex-debug-apk
+          path: artifacts
+
+      - name: Create release with APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            artifacts/*.apk \
+            --repo "${GITHUB_REPOSITORY}" \
+            --title "Toolex ${GITHUB_REF_NAME}" \
+            --notes "Images → PDF, offline. Install the APK below (allow \"install from unknown sources\" once)." \
+            --latest

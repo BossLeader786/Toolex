@@ -16,6 +16,21 @@ android {
         versionName = "1.0.0"
     }
 
+    // Optional real signing: add these 4 repo secrets and release builds get
+    // signed properly. Without them, release falls back to debug signing so the
+    // CI can still produce an installable APK.
+    val keystorePath = System.getenv("TOOLEX_KEYSTORE")
+    signingConfigs {
+        if (keystorePath != null && File(keystorePath).exists()) {
+            create("ci") {
+                storeFile = File(keystorePath)
+                storePassword = System.getenv("TOOLEX_STORE_PASSWORD")
+                keyAlias = System.getenv("TOOLEX_KEY_ALIAS")
+                keyPassword = System.getenv("TOOLEX_KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = true
@@ -24,9 +39,12 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
+            signingConfig = signingConfigs.findByName("ci") ?: signingConfigs.getByName("debug")
         }
         debug {
             applicationIdSuffix = ".debug"
+            // CI artefacts stay installable and small; no minification needed.
+            isMinifyEnabled = false
         }
     }
 
