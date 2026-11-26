@@ -33,11 +33,11 @@ jobs:
         uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: "17"
+          java-version: "21"
 
       # One shell for both commands, so every Gradle line ends up in gradle.log
       # even when the first command fails.
-      - name: Compile + unit tests
+      - name: Compile check, unit tests, debug APK
         shell: bash
         run: |
           set -o pipefail
@@ -46,6 +46,8 @@ jobs:
             ./gradlew :app:assembleRelease --stacktrace --no-daemon 2>&1 | tee -a gradle.log | tail -n 80
             echo "=== testDebugUnitTest ==="
             ./gradlew :app:testDebugUnitTest --stacktrace --no-daemon 2>&1 | tee -a gradle.log | tail -n 80
+            echo "=== assembleDebug ==="
+            ./gradlew :app:assembleDebug --stacktrace --no-daemon 2>&1 | tee -a gradle.log | tail -n 80
           }
 
       # The Actions log download endpoint is not reachable from every network,
@@ -126,12 +128,35 @@ jobs:
         uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: "17"
+          java-version: "21"
 
       - uses: gradle/actions/setup-gradle@v6
 
       - name: Assemble debug APK
-        run: ./gradlew :app:assembleDebug --stacktrace --no-daemon
+        shell: bash
+        run: |
+          set -o pipefail
+          ./gradlew :app:assembleDebug --stacktrace --no-daemon 2>&1 | tee build.log | tail -n 60
+
+      - name: Post build diagnostics
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          GH_SHA: ${{ github.sha }}
+        run: |
+          python3 - <<'PYEOF'
+          import json, os, urllib.request
+          raw = open("build.log", errors="replace").read() if os.path.exists("build.log") else "no log"
+          body = raw[-55000:]
+          req = urllib.request.Request(
+              f"https://api.github.com/repos/{os.environ['GH_REPO']}/commits/{os.environ['GH_SHA']}/comments",
+              data=json.dumps({"body": "### APK build log\n```\n" + body + "\n```"}).encode(),
+              headers={"Authorization": "Bearer " + os.environ["GH_TOKEN"],
+                       "Accept": "application/vnd.github+json",
+                       "Content-Type": "application/json"})
+          urllib.request.urlopen(req)
+          PYEOF
 
       - name: Collect APK
         run: |
