@@ -35,19 +35,18 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - uses: gradle/actions/setup-gradle@v6
-
-      # Bytecode/target-safety net: `javac` rejects Java-8-style references to
-      # Android APIs introduced after minSdk 24 (Kotlin 2.x no longer errors on
-      # those), so a release build catches accidental new-API usage.
-      - name: Verify release bytecode (no APIs above minSdk)
-        run: ./gradlew :app:assembleRelease --stacktrace --no-daemon
-
-      - name: Run JVM unit tests
+      # One shell for both commands, so every Gradle line ends up in gradle.log
+      # even when the first command fails.
+      - name: Compile + unit tests
         shell: bash
         run: |
           set -o pipefail
-          ./gradlew :app:testDebugUnitTest --stacktrace --no-daemon 2>&1 | tee gradle.log | tail -n 60
+          {
+            echo "=== assembleRelease (bytecode target check) ==="
+            ./gradlew :app:assembleRelease --stacktrace --no-daemon 2>&1 | tee -a gradle.log | tail -n 80
+            echo "=== testDebugUnitTest ==="
+            ./gradlew :app:testDebugUnitTest --stacktrace --no-daemon 2>&1 | tee -a gradle.log | tail -n 80
+          }
 
       # The Actions log download endpoint is not reachable from every network,
       # so mirror the diagnostics into a commit comment (readable via the API).
