@@ -1,93 +1,87 @@
-name: Build APK
+name: Toolex build
+
+# Everything happens on GitHub:
+#   push / PR  -> tests, engine verification, APK, and a public install page
+#   v* tag     -> the same APK as a GitHub Release
+#   Actions tab -> "Run workflow" (manual builds)
 
 on:
   push:
     branches: ["**"]
     tags: ["v*"]
   pull_request:
-  workflow_dispatch:        # Actions tab -> "Run workflow" -> APK artifact
+  workflow_dispatch:
 
 permissions:
-  contents: write           # needed to attach the APK to a GitHub Release
+  contents: write        # commit comments (diagnostics) + Releases + Pages branch
 
 concurrency:
   group: build-${{ github.ref }}
   cancel-in-progress: true
 
 env:
-  # Runners ship with an Android SDK; reuse it (avoids a flaky setup step).
+  # GitHub-hosted runners already ship an Android SDK; reuse it.
   ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
   ANDROID_HOME: /usr/local/lib/android/sdk
 
 jobs:
   # ---------------------------------------------------------------------------
-  # 1. Unit tests: page math, size parsing, name sanitising, ladder ordering.
+  # 1. Compile, unit tests and the installable APK.
+  #    `assembleRelease` doubles as a bytecode check: it fails if any code uses
+  #    Android APIs newer than minSdk 24.
   # ---------------------------------------------------------------------------
-  test:
-    name: Unit tests
+  build:
+    name: Build + tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
 
-      - name: Set up JDK 17
+      - name: Set up JDK 21
         uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "21"
 
-      # One shell for both commands, so every Gradle line ends up in gradle.log
-      # even when the first command fails.
-      - name: Compile check, unit tests, debug APK
+      - uses: gradle/actions/setup-gradle@v6
+
+      - name: Compile, unit tests, APK
         shell: bash
         run: |
           set -o pipefail
           {
-            echo "=== assembleRelease (bytecode target check) ==="
-            ./gradlew :app:assembleRelease --stacktrace --no-daemon 2>&1 | tee -a gradle.log | tail -n 80
+            echo "=== assembleRelease (minSdk bytecode check) ==="
+            ./gradlew :app:assembleRelease --stacktrace --no-daemon 2>&1 | tee -a gradle.log | tail -n 60
             echo "=== testDebugUnitTest ==="
-            ./gradlew :app:testDebugUnitTest --stacktrace --no-daemon 2>&1 | tee -a gradle.log | tail -n 80
-            echo "=== assembleDebug ==="
-            ./gradlew :app:assembleDebug --stacktrace --no-daemon 2>&1 | tee -a gradle.log | tail -n 80
+            ./gradlew :app:testDebugUnitTest --stacktrace --no-daemon 2>&1 | tee -a gradle.log | tail -n 60
+            echo "=== assembleDebug (the APK we ship) ==="
+            ./gradlew :app:assembleDebug --stacktrace --no-daemon 2>&1 | tee -a gradle.log | tail -n 60
           }
 
-      # The Actions log download endpoint is not reachable from every network,
-      # so mirror the diagnostics into a commit comment (readable via the API).
-      - name: Post failure details to the commit
+      - name: Collect APK
+        run: |
+          mkdir -p artifacts
+          # PR refs look like "12/merge" -> slashes would break the file name.
+          SAFE_REF="$(printf '%s' "${GITHUB_REF_NAME}" | tr '/ ' '--')"
+          cp app/build/outputs/apk/debug/*.apk "artifacts/Toolex-${SAFE_REF}-debug.apk"
+          ls -lh artifacts
+
+      - name: Post diagnostics to the commit
         if: failure()
         env:
           GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-          GH_SHA: ${{ github.sha }}
-        run: |
-          python3 - <<'PYEOF'
-          import json, os, re, urllib.request
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_SHA: ${{ github.sha }}
+        run: python3 tools/ci_report.py --log gradle.log --title "Build log (filtered)"
 
-          try:
-              raw = open("gradle.log", errors="replace").read()
-          except FileNotFoundError:
-              raw = "gradle.log not produced (failure happened before Gradle ran)"
+      - name: Upload APK
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: toolex-debug-apk
+          path: artifacts/*.apk
+          retention-days: 90
 
-          pattern = re.compile(
-              r"(^e: |error:|^FAILED|What went wrong|Caused by|Execution failed|> Task .*FAILED|"
-              r"Unresolved reference|Type mismatch|Only safe \(|Cannot access)"
-          )
-          lines = [l for l in raw.splitlines() if pattern.search(l)]
-          body = "\n".join(lines)[-55000:] or raw[-55000:]
-          payload = {"body": "### CI diagnostics\n```\n" + body + "\n```"}
-          req = urllib.request.Request(
-              f"https://api.github.com/repos/{os.environ['GH_REPO']}/commits/{os.environ['GH_SHA']}/comments",
-              data=json.dumps(payload).encode(),
-              headers={
-                  "Authorization": "Bearer " + os.environ["GH_TOKEN"],
-                  "Accept": "application/vnd.github+json",
-                  "Content-Type": "application/json",
-              },
-          )
-          urllib.request.urlopen(req)
-          print("diagnostics posted")
-          PYEOF
-
-      - name: Publish test report
+      - name: Upload test report
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -96,8 +90,8 @@ jobs:
           if-no-files-found: ignore
 
   # ---------------------------------------------------------------------------
-  # 2. Engine verification: a 1:1 Python port is checked against the original
-  #    Flask maths + real PDFs are read back with pypdf.
+  # 2. Engine verification: a 1:1 Python port is compared with the original
+  #    Flask maths (288 layout cases) and real PDFs are read back with pypdf.
   # ---------------------------------------------------------------------------
   verify-engine:
     name: Verify PDF engine
@@ -115,66 +109,44 @@ jobs:
         run: python3 tools/verify_pdf.py
 
   # ---------------------------------------------------------------------------
-  # 3. Build the installable APK and keep it as a run artifact.
+  # 3. Public install page on GitHub Pages (QR + APK), so a phone can install
+  #    the latest successful build with one tap — even though the repo is
+  #    private. Rebuilt only from the default branch + tags.
   # ---------------------------------------------------------------------------
-  build:
-    name: Build debug APK
-    needs: [test, verify-engine]
+  pages:
+    name: Publish install page
+    needs: build
+    if: >-
+      github.event_name != 'pull_request' &&
+      (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
 
-      - name: Set up JDK 17
-        uses: actions/setup-java@v5
-        with:
-          distribution: temurin
-          java-version: "21"
-
-      - uses: gradle/actions/setup-gradle@v6
-
-      - name: Assemble debug APK
-        shell: bash
-        run: |
-          set -o pipefail
-          ./gradlew :app:assembleDebug --stacktrace --no-daemon 2>&1 | tee build.log | tail -n 60
-
-      - name: Post build diagnostics
-        if: failure()
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-          GH_SHA: ${{ github.sha }}
-        run: |
-          python3 - <<'PYEOF'
-          import json, os, urllib.request
-          raw = open("build.log", errors="replace").read() if os.path.exists("build.log") else "no log"
-          body = raw[-55000:]
-          req = urllib.request.Request(
-              f"https://api.github.com/repos/{os.environ['GH_REPO']}/commits/{os.environ['GH_SHA']}/comments",
-              data=json.dumps({"body": "### APK build log\n```\n" + body + "\n```"}).encode(),
-              headers={"Authorization": "Bearer " + os.environ["GH_TOKEN"],
-                       "Accept": "application/vnd.github+json",
-                       "Content-Type": "application/json"})
-          urllib.request.urlopen(req)
-          PYEOF
-
-      - name: Collect APK
-        run: |
-          mkdir -p artifacts
-          # PR refs are like "1/merge" -> slashes would break the file name.
-          SAFE_REF="$(printf '%s' "${GITHUB_REF_NAME}" | tr '/ ' '--')"
-          cp app/build/outputs/apk/debug/*.apk "artifacts/Toolex-${SAFE_REF}-debug.apk"
-          ls -lh artifacts
-
-      - uses: actions/upload-artifact@v4
+      - uses: actions/download-artifact@v4
         with:
           name: toolex-debug-apk
-          path: artifacts/*.apk
-          retention-days: 90
+          path: artifacts
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Build site
+        run: |
+          pip install --quiet "qrcode[pil]"
+          APK="$(ls artifacts/*.apk | head -1)"
+          python3 tools/make_install_page.py "$APK" site
+
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ github.token }}
+          publish_dir: ./site
+          publish_branch: gh-pages
 
   # ---------------------------------------------------------------------------
-  # 4. Tag push (v1.0.0 ...) -> public GitHub Release with the APK attached,
-  #    so the phone can install it with one tap from the Releases page.
+  # 4. v* tag -> GitHub Release with the APK attached.
   # ---------------------------------------------------------------------------
   release:
     name: Publish GitHub Release

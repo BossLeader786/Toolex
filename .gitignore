@@ -13,3 +13,8 @@ local.properties
 __pycache__/
 *.pyc
 docs/sample/
+site/
+artifacts/
+gradle.log
+probe.log
+build.log
