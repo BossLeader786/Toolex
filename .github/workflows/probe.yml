@@ -8,13 +8,9 @@ on:
 permissions:
   contents: write
 
-concurrency:
-  group: probe-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
-  build:
-    name: Build (diagnostics)
+  release-build:
+    name: Release build (diagnostics)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -25,11 +21,10 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Build with full log
+      - name: Build release with full log
         shell: bash
         run: |
-          set -o pipefail
-          ./gradlew :app:assembleDebug --no-daemon --stacktrace > build.log 2>&1
+          ./gradlew :app:assembleRelease --no-daemon --stacktrace > build.log 2>&1
           echo "exit=$?"
           tail -40 build.log
 
@@ -45,13 +40,10 @@ jobs:
 
           raw = open("build.log", errors="replace").read() if os.path.exists("build.log") else "no build.log"
           lines = raw.splitlines()
-
-          keep = []
-          for i, line in enumerate(lines):
-              if re.search(r"(^e: |^w: file|error:|^FAILED|What went wrong|Caused by:|Execution failed|> Task .*FAILED|Unresolved reference|Type mismatch|None of the following|Cannot access|is not a function|AAPT|resource.*not found|Android resource linking)", line):
-                  keep.append(f"{i}: {line}")
-          filtered = "\n".join(keep)[-50000:] or "(no error-pattern lines found)"
-          tail = "\n".join(lines[-8000:])
+          keep = [f"{i}: {l}" for i, l in enumerate(lines)
+                  if re.search(r"(What went wrong|Caused by:|Execution failed|FAILED|error:|^e: |keystore|signing|SigningConfig|Missing|not found|No such)", l)]
+          filtered = "\n".join(keep)[-30000:] or "(nothing matched)"
+          tail = "\n".join(lines[-6000:])
 
           def post(body, label):
               req = urllib.request.Request(
@@ -62,7 +54,7 @@ jobs:
                            "Content-Type": "application/json"})
               urllib.request.urlopen(req)
 
-          post(filtered, "Build errors (filtered)")
-          post(tail, "Build log tail")
+          post(filtered, "Release build errors")
+          post(tail, "Release build log tail")
           print("posted")
           PYEOF
