@@ -5,7 +5,7 @@ on:
     branches: ["**"]
     tags: ["v*"]
   pull_request:
-  workflow_dispatch:        # Actions tab se "Run workflow" -> APK download
+  workflow_dispatch:        # Actions tab -> "Run workflow" -> APK artifact
 
 permissions:
   contents: write           # needed to attach the APK to a GitHub Release
@@ -13,6 +13,11 @@ permissions:
 concurrency:
   group: build-${{ github.ref }}
   cancel-in-progress: true
+
+env:
+  # Runners ship with an Android SDK; reuse it (avoids a flaky setup step).
+  ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+  ANDROID_HOME: /usr/local/lib/android/sdk
 
 jobs:
   # ---------------------------------------------------------------------------
@@ -22,19 +27,18 @@ jobs:
     name: Unit tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-java@v4
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "17"
 
-      - uses: android-actions/setup-android@v3
-
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v6
 
       - name: Run JVM unit tests
-        run: ./gradlew :app:testDebugUnitTest --stacktrace
+        run: ./gradlew :app:testDebugUnitTest --stacktrace --no-daemon
 
       - name: Publish test report
         if: always()
@@ -52,7 +56,7 @@ jobs:
     name: Verify PDF engine
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: actions/setup-python@v5
         with:
@@ -71,19 +75,18 @@ jobs:
     needs: [test, verify-engine]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-java@v4
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "17"
 
-      - uses: android-actions/setup-android@v3
-
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v6
 
       - name: Assemble debug APK
-        run: ./gradlew :app:assembleDebug --stacktrace
+        run: ./gradlew :app:assembleDebug --stacktrace --no-daemon
 
       - name: Collect APK
         run: |
@@ -107,8 +110,6 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-
       - uses: actions/download-artifact@v4
         with:
           name: toolex-debug-apk
